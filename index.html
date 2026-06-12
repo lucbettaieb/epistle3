@@ -405,7 +405,8 @@ scene.add(snow);
 const PATH=[[40,0,16],[0,0,14],[-50,3,11],[-90,-5,9],[-130,4,10],[-170,0,18],[-220,-7,26],
   [-270,5,24],[-300,0,14],[-340,-4,16],[-400,5,16],[-450,0,13],[-500,-5,12],[-560,3,11],[-610,0,10],[-665,0,20],
   /* --- Borealis interior (reached after boarding) --- */
-  [-686,0,8],[-700,0,7],[-745,4,6],[-795,-4,7],[-850,0,9],[-900,0,6],[-935,0,13],[-975,0,8],[-1010,0,9]];
+  [-686,0,8],[-700,0,7],[-760,4,6],[-820,-4,7],[-880,0,9],[-940,-3,6],
+  [-1000,3,7],[-1040,0,6],[-1075,0,13],[-1115,0,8],[-1160,0,9]];
 function corridorAt(z){
   if(z>=PATH[0][0]) return {c:PATH[0][1],w:PATH[0][2]};
   for(let i=0;i<PATH.length-1;i++){
@@ -602,7 +603,7 @@ function makeNPC({jacket,trim,skin,hair}){
 function makeCompanion(opts,name){
   const {g,legs}=makeNPC(opts);
   g.visible=false; scene.add(g);
-  return {name,mesh:g,legs,target:V3(),walkT:0,dead:false,active:false,fallT:0};
+  return {name,mesh:g,legs,target:V3(),walkT:0,dead:false,active:false,fallT:0,hold:true};
 }
 const alyxNPC=makeCompanion({jacket:0x4a3826,trim:0x2a2a30,skin:0xc9986f,hair:0x1d1410},'alyx');
 const mossNPC=makeCompanion({jacket:0xd8dde2,trim:0x9aa6ae,skin:0xd9ab8a,hair:0x6e4f33},'moss');
@@ -620,6 +621,9 @@ function npcUpdate(c,dt){
     return;
   }
   if(!c.active) return;
+  /* loose leash: when free-roaming, trail the player instead of waiting at the last anchor */
+  if(!c.hold&&player.pos.z<c.mesh.position.z-7)
+    c.target.set(c===alyxNPC?-1.5:1.5,0,player.pos.z+2.5);
   tmpA.copy(c.target).sub(c.mesh.position); tmpA.y=0;
   const d=tmpA.length();
   if(d>.25){
@@ -668,9 +672,9 @@ const hullIn=new THREE.MeshStandardMaterial({color:0x53413a,flatShading:true,rou
 const hullPanel=new THREE.MeshStandardMaterial({color:0x39434c,flatShading:true,roughness:.6,metalness:.45});
 const deckMatIn=new THREE.MeshStandardMaterial({color:0x2e3640,roughness:.8,metalness:.3});
 {
-  const floor=new THREE.Mesh(new THREE.BoxGeometry(44,.12,345),deckMatIn);
-  floor.position.set(0,-.04,-848); floor.receiveShadow=true; interior.add(floor);
-  for(let z=-688;z>-1012;z-=5){
+  const floor=new THREE.Mesh(new THREE.BoxGeometry(44,.12,484),deckMatIn);
+  floor.position.set(0,-.04,-925); floor.receiveShadow=true; interior.add(floor);
+  for(let z=-688;z>-1164;z-=5){
     const {c,w}=corridorAt(z);
     const mat=(Math.floor(-z/5)%3===0)?hullPanel:hullIn;
     for(const s of [-1,1]){
@@ -685,7 +689,7 @@ const deckMatIn=new THREE.MeshStandardMaterial({color:0x2e3640,roughness:.8,meta
     }
   }
   /* ribs + emergency light strips */
-  for(let z=-694;z>-1008;z-=12){
+  for(let z=-694;z>-1158;z-=12){
     const {c,w}=corridorAt(z);
     const rib=new THREE.Mesh(new THREE.BoxGeometry(w*2+4,.5,.5),hullPanel);
     rib.position.set(c,6,z); interior.add(rib);
@@ -698,7 +702,8 @@ const deckMatIn=new THREE.MeshStandardMaterial({color:0x2e3640,roughness:.8,meta
     strip.position.set(c+((-z%24<12)?-1:1)*(w-.4),2.6,z-4); interior.add(strip);
   }
   /* sparse flickering lights */
-  const lampDefs=[[-720,0xffa050],[-790,0x77bbee],[-855,0xffa050],[-930,0x77bbee],[-1000,0x99ccee]];
+  const lampDefs=[[-720,0xffa050],[-790,0x77bbee],[-855,0xffa050],[-930,0x77bbee],
+    [-1000,0xffa050],[-1070,0x77bbee],[-1148,0x99ccee]];
   for(const [z,col] of lampDefs){
     const {c}=corridorAt(z);
     const L=new THREE.PointLight(col,9,22); L.position.set(c,5,z);
@@ -706,7 +711,8 @@ const deckMatIn=new THREE.MeshStandardMaterial({color:0x2e3640,roughness:.8,meta
     setInterval(()=>{L.intensity=rand(5,11);},rand(160,420));
   }
   /* hold cargo: rusted containers */
-  const contDefs=[[-6,-735,.3],[5,-742,-.2],[-7,-868,.15],[6,-885,-.4],[8,-948,.1],[-9,-952,-.2]];
+  const contDefs=[[-6,-735,.3],[5,-742,-.2],[-7,-848,.15],[6,-865,-.4],
+    [-7,-988,.1],[6,-1005,-.2],[8,-1088,.1],[-9,-1092,-.25]];
   for(const [x,z,ry] of contDefs){
     const cont=new THREE.Mesh(new THREE.BoxGeometry(5.5,2.4,2.4),
       new THREE.MeshStandardMaterial({color:[0x7c5b35,0x5b6e7c,0x6e7c5b][Math.floor(rand(0,3))],flatShading:true,roughness:.8}));
@@ -716,25 +722,25 @@ const deckMatIn=new THREE.MeshStandardMaterial({color:0x2e3640,roughness:.8,meta
   }
   /* the chamber console (where the argument happens) */
   const cons=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.4,1.2,8),hullPanel);
-  cons.position.set(0,.6,-934); cons.castShadow=true; interior.add(cons);
+  cons.position.set(0,.6,-1074); cons.castShadow=true; interior.add(cons);
   const consGlow=new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,.18,8),
     new THREE.MeshStandardMaterial({color:0x081018,emissive:0x66ccff,emissiveIntensity:2.5}));
-  consGlow.position.set(0,1.3,-934); interior.add(consGlow);
-  const consLight=new THREE.PointLight(0x88ccee,14,16); consLight.position.set(0,3.4,-933); interior.add(consLight);
-  addBoxCollider(0,.7,-934,1.3,.7,1.3);
+  consGlow.position.set(0,1.3,-1074); interior.add(consGlow);
+  const consLight=new THREE.PointLight(0x88ccee,14,16); consLight.position.set(0,3.4,-1073); interior.add(consLight);
+  addBoxCollider(0,.7,-1074,1.3,.7,1.3);
   /* the helm */
   const helm=new THREE.Mesh(new THREE.BoxGeometry(5,1.1,1.4),hullPanel);
-  helm.position.set(0,.55,-1002); helm.castShadow=true; interior.add(helm);
-  addBoxCollider(0,.55,-1002,2.5,.55,.7);
+  helm.position.set(0,.55,-1150); helm.castShadow=true; interior.add(helm);
+  addBoxCollider(0,.55,-1150,2.5,.55,.7);
   const helmGlow=new THREE.Mesh(new THREE.BoxGeometry(4.4,.5,.1),
     new THREE.MeshStandardMaterial({color:0x081018,emissive:0x8adfff,emissiveIntensity:2}));
-  helmGlow.position.set(0,1.35,-1002.4); helmGlow.rotation.x=-.4; interior.add(helmGlow);
+  helmGlow.position.set(0,1.35,-1150.4); helmGlow.rotation.x=-.4; interior.add(helmGlow);
   /* wide bridge viewport: leave the far end open, frame it */
   const sill=new THREE.Mesh(new THREE.BoxGeometry(19,.6,.6),hullPanel);
-  sill.position.set(0,1.2,-1009); interior.add(sill);
-  addBoxCollider(0,1.7,-1009,9.5,1.7,.3); // keeps the player on the bridge
+  sill.position.set(0,1.2,-1157); interior.add(sill);
+  addBoxCollider(0,1.7,-1157,9.5,1.7,.3); // keeps the player on the bridge
   const lintel=new THREE.Mesh(new THREE.BoxGeometry(19,.8,.8),hullIn);
-  lintel.position.set(0,5.8,-1009); interior.add(lintel);
+  lintel.position.set(0,5.8,-1157); interior.add(lintel);
 }
 interior.visible=false;
 
@@ -755,7 +761,7 @@ const nexus=new THREE.Group();
   const halo=new THREE.PointLight(0x88d4ff,0,900); nexus.add(halo);
   nexus.userData.halo=halo;
 }
-nexus.position.set(0,55,-1420); nexus.visible=false; scene.add(nexus);
+nexus.position.set(0,55,-1570); nexus.visible=false; scene.add(nexus);
 
 /* ============================= props (crates / barrels) ============================= */
 const props=[];
@@ -792,8 +798,9 @@ spawnProp('barrel',3,-505); spawnProp('barrel',-4,-542);
 spawnProp('crate',5,-520,'med'); spawnProp('crate',2,-580,'ammo');
 /* aboard the Borealis */
 spawnProp('crate',-5,-738,'ammo'); spawnProp('crate',-6.2,-739.2);
-spawnProp('crate',4,-862,'med'); spawnProp('crate',5.2,-863,'ammo');
-spawnProp('barrel',-6,-872); spawnProp('crate',7,-958,'med');
+spawnProp('crate',4,-866,'med'); spawnProp('crate',5.2,-867,'ammo');
+spawnProp('barrel',-6,-875); spawnProp('barrel',5,-996);
+spawnProp('crate',-4,-1035,'med'); spawnProp('crate',-5.2,-1036.2,'ammo');
 
 /* ============================= pickups ============================= */
 const pickups=[];
@@ -862,12 +869,12 @@ spawnSoldier(-3,-100); spawnSoldier(5,-118);
 spawnSoldier(-6,-340); spawnSoldier(6,-355); spawnSoldier(-2,-378); spawnSoldier(8,-392);
 spawnSoldier(-4,-508); spawnSoldier(4,-540);
 /* aboard the Borealis */
-spawnSoldier(2,-752); spawnSoldier(-4,-764);
-spawnSoldier(-5,-864); spawnSoldier(5,-876); spawnSoldier(0,-892);
+spawnSoldier(2,-830); spawnSoldier(-4,-842);
+spawnSoldier(-5,-975); spawnSoldier(5,-988); spawnSoldier(0,-1002);
 /* manhack placement */
 spawnManhack(-8,-196); spawnManhack(2,-208); spawnManhack(9,-220); spawnManhack(-4,-232); spawnManhack(6,-245);
 spawnManhack(-5,-482); spawnManhack(3,-498); spawnManhack(-2,-515); spawnManhack(5,-528);
-spawnManhack(-3,-798); spawnManhack(3,-806); spawnManhack(0,-814);
+spawnManhack(-3,-905); spawnManhack(3,-912); spawnManhack(0,-920);
 
 /* ============================= viewmodels ============================= */
 const vm=new THREE.Group(); camera.add(vm); scene.add(camera);
@@ -1019,6 +1026,8 @@ ui.prologue.addEventListener('click',()=>{
   ui.slots.style.display='flex';
   ui.cross.classList.remove('hidden');
   state='play'; stats.start=performance.now();
+  showChapter('CHAPTER ONE','THE LAST FLIGHT');
+  setObjective('FOLLOW THE ICE NORTH');
   if(!TOUCH) lockPointer();
 });
 ui.death.addEventListener('click',()=>{
@@ -1377,19 +1386,48 @@ function gravPunt(){
 }
 
 /* ============================= story / checkpoints ============================= */
-const subQueue=[]; let subT=0;
+const subQueue=[]; let subT=0, subIdleT=99;
+const pendingLines=[]; // beat dialogue waits here until the channel has been quiet for a moment
 function say(lines){for(const l of lines) subQueue.push(l);} // [speaker,text,dur]
 function updateSubs(dt){
   if(subT>0){
-    subT-=dt;
+    subT-=dt; subIdleT=0;
     if(subT<=0){ui.subs.style.opacity=0;}
     return;
   }
   if(subQueue.length){
+    subIdleT=0;
     const [sp,text,dur]=subQueue.shift();
     ui.subSpeaker.textContent=sp; ui.subText.textContent=' '+text;
     ui.subSpeaker.className=sp==='G-MAN'?'v-gman':sp==='MOSSMAN'?'v-moss':sp==='VORTIGAUNT'?'v-vort':'v-alyx';
     ui.subs.style.opacity=1; subT=dur; sfx.radio();
+    return;
+  }
+  subIdleT+=dt;
+  /* release the next held beat only after a breath of silence */
+  if(state==='play'&&pendingLines.length&&subIdleT>1.1){
+    say(pendingLines.shift()); subIdleT=0;
+  }
+}
+function clearDialogue(){subQueue.length=0; pendingLines.length=0; subT=0; subIdleT=99; ui.subs.style.opacity=0;}
+
+/* ---------- cutscene sequencer ----------
+   step forms: [ [speaker,text,dur], ... ]  queue the group, wait until it fully drains
+              {wait:s}                      pause
+              function                      run side effects                         */
+const seqs=[];
+function runSeq(steps){seqs.push({steps,i:0,wait:0,queued:false});}
+function updateSeqs(dt){
+  for(let k=seqs.length;k--;){
+    const s=seqs[k];
+    if(s.wait>0){s.wait-=dt;continue;}
+    if(s.i>=s.steps.length){seqs.splice(k,1);continue;}
+    const st=s.steps[s.i];
+    if(typeof st==='function'){st();s.i++;s.queued=false;}
+    else if(Array.isArray(st)){
+      if(!s.queued){say(st);s.queued=true;}
+      if(subQueue.length===0&&subT<=0){s.i++;s.queued=false;}
+    }else{s.wait=st.wait||0;s.i++;s.queued=false;}
   }
 }
 let revealT=-1;
@@ -1447,7 +1485,7 @@ function onCellBroken(){
   },30);
   mossNPC.active=true;
   mossNPC.target.set(8,0,-420);
-  say([[M,'Gordon? Gordon Freeman. Of all the rescue parties I imagined…',5],
+  pendingLines.push([[M,'Gordon? Gordon Freeman. Of all the rescue parties I imagined…',5],
        [M,'They pulled me off the dig crew when I stopped cooperating. The ship is real, Gordon. The drive is still aboard.',6.5],
        [A,'Mossman. Gordon, watch her — after White Forest I don’t trust a word out of that pod.',5.5],
        [M,'Charming as ever. There’s a breach in the ice near the bow. I can get us through the hull — follow me down.',6],
@@ -1474,15 +1512,20 @@ function boardShip(){
     frozen=false;
     showChapter('CHAPTER FOUR','BELOW DECKS');
     setObjective('MOVE DEEPER INTO THE SHIP');
-    say([[M,'Mind your footing. Half this deck is nineteen-eighty-something. The other half is right now.',6],
-         [A,'The Combine cut their way in ahead of us. Lights are theirs. Stay sharp, Gordon.',5.5]]);
+    clearDialogue(); // hard cut: whatever was left on the radio stays on the ice
+    runSeq([
+      {wait:3.5}, // let the place speak first
+      [[M,'Mind your footing. Half this deck is nineteen-eighty-something. The other half is right now.',6]],
+      {wait:1.2},
+      [[A,'The Combine cut their way in ahead of us. Lights are theirs. Stay sharp, Gordon.',5.5]],
+    ]);
     saveCheckpoint();
   },1200);
 }
 function placeCompanions(z){
   for(const c of companions){
     if(c.dead) continue;
-    c.active=true; c.mesh.visible=true;
+    c.active=true; c.mesh.visible=true; c.hold=false;
     const off=c===alyxNPC?-1.6:1.6;
     c.mesh.position.set(off,0,z+3);
     c.target.set(off,0,z-4);
@@ -1510,11 +1553,11 @@ function phaseFlash(kind){
 }
 
 /* ---------- the argument ---------- */
-const chamberCol=addBoxCollider(0,2.75,-950,14,2.75,.5); chamberCol.active=false;
+const chamberCol=addBoxCollider(0,2.75,-1092,14,2.75,.5); chamberCol.active=false;
 const chamberField=new THREE.Mesh(new THREE.PlaneGeometry(28,5.5),
   new THREE.MeshBasicMaterial({color:0x66ccff,transparent:true,opacity:0,
     blending:THREE.AdditiveBlending,side:THREE.DoubleSide,depthWrite:false}));
-chamberField.position.set(0,2.75,-950); scene.add(chamberField);
+chamberField.position.set(0,2.75,-1092); scene.add(chamberField);
 function startArgument(){
   if(prog.argued) return;
   prog.argued=true;
@@ -1523,56 +1566,69 @@ function startArgument(){
   showChapter('CHAPTER SIX','THE ARGUMENT');
   setObjective('');
   /* the two of them take the console */
-  alyxNPC.target.set(-1.3,0,-933); mossNPC.target.set(1.4,0,-934.6);
-  const T=(ms,fn)=>setTimeout(fn,ms);
-  T(2500,()=>say([[M,'It’s done — I’ve stabilized the drift. From here she’ll go anywhere we ask. Any *when* we ask.',7]]));
-  T(10000,()=>say([[A,'Good. Then lock in the Combine overworld nexus. We put this ship through their heart and end it in one stroke.',7]]));
-  T(17500,()=>say([[M,'Are you insane? This vessel is beyond price! Delivered intact to the resistance it wins the war a hundred times over.',7]]));
-  T(25000,()=>say([[A,'Delivered to the resistance? Or to whoever you answer to this week — like at White Forest? Like my father?',7]]));
-  T(32500,()=>say([[M,'Step away from the console, Alyx. I will not ask twice.',5]]));
-  T(38000,()=>{
-    sfx.shoot(); ui.flash.style.transition='opacity .1s'; ui.flash.style.opacity=.5;
-    setTimeout(()=>{ui.flash.style.transition='opacity .8s';ui.flash.style.opacity=0;},120);
-    mossNPC.dead=true; mossNPC.active=false;
-    spawnPuffs(tmpB.copy(mossNPC.mesh.position).setY(1.3),6,0xddddee,4,.5);
-  });
-  T(40500,()=>say([[A,'She went for her sidearm. You saw it. …You saw it, right, Gordon?',6.5],
-                   [A,'It doesn’t matter now. Course is set. Get to the helm — I want you beside me when it ends.',6]]));
-  T(47000,()=>{
-    chamberCol.active=false; chamberField.material.opacity=0; sfx.flicker();
-    setObjective('REACH THE HELM');
-    alyxNPC.target.set(0,0,-998);
-    saveCheckpoint();
-  });
+  alyxNPC.hold=mossNPC.hold=true;
+  alyxNPC.target.set(-1.3,0,-1073); mossNPC.target.set(1.4,0,-1074.6);
+  runSeq([
+    {wait:4},
+    [[M,'It’s done — I’ve stabilized the drift. From here she’ll go anywhere we ask. Any *when* we ask.',7]],
+    {wait:1},
+    [[A,'Good. Then lock in the Combine overworld nexus. We put this ship through their heart and end it in one stroke.',7]],
+    {wait:1},
+    [[M,'Are you insane? This vessel is beyond price! Delivered intact to the resistance it wins the war a hundred times over.',7]],
+    {wait:1},
+    [[A,'Delivered to the resistance? Or to whoever you answer to this week — like at White Forest? Like my father?',7]],
+    {wait:1.4},
+    [[M,'Step away from the console, Alyx. I will not ask twice.',5]],
+    {wait:1.8},
+    ()=>{
+      sfx.shoot(); ui.flash.style.transition='opacity .1s'; ui.flash.style.opacity=.5;
+      setTimeout(()=>{ui.flash.style.transition='opacity .8s';ui.flash.style.opacity=0;},120);
+      mossNPC.dead=true; mossNPC.active=false;
+      spawnPuffs(tmpB.copy(mossNPC.mesh.position).setY(1.3),6,0xddddee,4,.5);
+    },
+    {wait:3},
+    [[A,'She went for her sidearm. You saw it. …You saw it, right, Gordon?',6.5]],
+    {wait:2},
+    [[A,'It doesn’t matter now. Course is set. Get to the helm — I want you beside me when it ends.',6]],
+    {wait:1},
+    ()=>{
+      chamberCol.active=false; chamberField.material.opacity=0; sfx.flicker();
+      setObjective('REACH THE HELM');
+      alyxNPC.target.set(0,0,-1146);
+      saveCheckpoint();
+    },
+  ]);
 }
 
 const beats=[
-  {z:-8,fn(){showChapter('CHAPTER ONE','THE LAST FLIGHT');setObjective('FOLLOW THE ICE NORTH');},
-    lines:[[A,'Gordon! You’re moving — good. The gunship clipped us hard; I came down on the ridge east of you.',5],
-           [A,'Mossman’s coordinates end about a kilometer north. Follow the ice. The Borealis is close — I can feel it.',5.5]]},
-  {z:-70,fn(){showChapter('CHAPTER TWO','ACROSS THE ICE');},
-    lines:[[A,'Heads up. I’m picking up Combine chatter all over this valley. They beat us here.',4.5]]},
-  {z:-178,lines:[[A,'Manhacks! Out here? They really don’t want anyone reaching that ship.',4.5]]},
+  {z:-8,lines:[[A,'Gordon! You’re moving — good. The gunship clipped us hard; I came down on the ridge east of you.',5],
+               [A,'Mossman’s coordinates end about a kilometer north. Follow the ice. The Borealis is close — I can feel it.',5.5]]},
+  {z:-70,lines:[[A,'Heads up. I’m picking up Combine chatter all over this valley. They beat us here.',4.5]]},
+  {z:-148,fn(){showChapter('CHAPTER TWO','ACROSS THE ICE');},
+    lines:[[A,'Clear behind you? Good. The valley opens up ahead — keep moving while we still have light.',5.5]]},
+  {z:-200,lines:[[A,'Manhacks! Out here? They really don’t want anyone reaching that ship.',4.5]]},
   {z:-288,cp:true,fn(){revealT=0;ghost.visible=true;sfx.flicker();},
     lines:[[A,'Oh my god. Gordon… there it is. The Borealis.',4.5],
            [A,'It’s not all the way here. It keeps slipping — like the ship can’t decide *when* it wants to be.',6]]},
-  {z:-318,cp:true,fn(){showChapter('CHAPTER THREE','THE OUTPOST');setObjective('BREAK THROUGH THE OUTPOST');},
+  {z:-330,cp:true,fn(){showChapter('CHAPTER THREE','THE OUTPOST');setObjective('BREAK THROUGH THE OUTPOST');},
     lines:[[A,'That outpost is the only thing between you and the hull. Mossman said the drive is still aboard — we can’t let them dig it out.',6],
            [A,'Wait. Gordon, there’s a detention pod at the back of that outpost — and a live human reading inside it.',5.5]]},
-  {z:-395,fn(){if(!prog.rescued)setObjective('DESTROY THE POD’S POWER CELL');},
+  {z:-398,fn(){if(!prog.rescued)setObjective('DESTROY THE POD’S POWER CELL');},
     lines:[[A,'That barrier across the pass runs off the pod’s power cell — the glowing cylinder. Smash it and we get the prisoner *and* the road.',6.5]]},
-  {z:-470,cp:true,lines:[[A,'Almost there! The breach Mossman promised — near the bow, glowing blue. We’re at the light, waiting for you!',5.5]]},
-  {z:-560,lines:[[A,'Whatever happens aboard that ship… I’m glad it’s you out here with me, Gordon.',5]]},
+  {z:-480,cp:true,lines:[[A,'Almost there! The breach Mossman promised — near the bow, glowing blue. We’re at the light, waiting for you!',5.5]]},
+  {z:-580,lines:[[A,'Whatever happens aboard that ship… I’m glad it’s you out here with me, Gordon.',5]]},
   /* -------- aboard the Borealis -------- */
-  {z:-726,fn(){phaseFlash('aperture');placeCompanions(-740);},
+  {z:-790,fn(){phaseFlash('aperture');placeCompanions(-812);},
     lines:[[M,'Did you feel that? That was the dry dock. Aperture Science — the day they vanished the whole ship from the harbor.',6.5],
            [A,'I just saw welders. People, working, right through us. Are they the ghosts here… or are we?',6]]},
-  {z:-784,cp:true,fn(){showChapter('CHAPTER FIVE','ADRIFT IN TIME');placeCompanions(-830);},
+  {z:-880,cp:true,fn(){showChapter('CHAPTER FIVE','ADRIFT IN TIME');placeCompanions(-935);},
     lines:[[A,'More of them ahead — the Combine want the engine room. Don’t let them dig in.',5]]},
-  {z:-840,cp:true,fn(){phaseFlash('war');placeCompanions(-905);setObjective('REACH THE REACTOR CHAMBER');},
+  {z:-955,cp:true,fn(){phaseFlash('war');placeCompanions(-1030);setObjective('REACH THE REACTOR CHAMBER');},
     lines:[[M,'The reactor is cycling faster. The ship isn’t just slipping through time anymore — it’s choosing destinations.',6.5],
            [A,'I saw the sky on fire, Gordon. Seven hours, start to finish. We cannot let them keep this thing.',6]]},
-  {z:-916,fn(){startArgument();},lines:[]},
+  {z:-1040,cp:true,fn(){placeCompanions(-1062);},
+    lines:[[A,'Mossman’s been three steps ahead of us since the pod. Whatever she’s setting up at that console… stay close to me, Gordon.',6.5]]},
+  {z:-1058,fn(){startArgument();},lines:[]},
 ];
 for(const b of beats) b.done=false;
 
@@ -1599,6 +1655,7 @@ function applyProgress(){
 }
 function loadCheckpoint(){
   if(player.held) gravDrop();
+  clearDialogue(); // stale radio chatter dies with the previous attempt
   if(checkpoint){
     player.pos.set(checkpoint.x,0,checkpoint.z);
     player.yaw=checkpoint.yaw; player.pitch=0;
@@ -1623,7 +1680,7 @@ function loadCheckpoint(){
 }
 
 /* ============================= ending ============================= */
-let endDone=false, rumbleT=0;
+let endDone=false, rumbleT=0, groanT=9;
 function startEnding(){
   if(state!=='play'||prog.finale) return;
   prog.finale=true;
@@ -1634,74 +1691,87 @@ function startEnding(){
   vm.visible=false; ui.cross.classList.add('hidden');
   showChapter('CHAPTER SEVEN','INFINITE FINALITY');
   setObjective('');
-  const T=(ms,fn)=>setTimeout(fn,ms);
   /* Alyx takes the helm; collision course */
   alyxNPC.active=false; alyxNPC.mesh.visible=true;
-  alyxNPC.mesh.position.set(-1.4,0,-1003.6);
+  alyxNPC.mesh.position.set(-1.4,0,-1151.6);
   alyxNPC.mesh.rotation.set(0,Math.PI,0);
-  T(800,()=>say([[A,'Course locked. Straight into the heart of their empire.',5.5],
-                 [A,'Whatever this ship can really do… let them have all of it at once.',5.5]]));
-  T(2500,()=>{
-    nexus.visible=true; nexus.userData.halo.intensity=140;
-    scene.fog.far=2000; rumbleT=1;
-    sfxTone({f0:30,f1:90,dur:3,vol:.3,type:'sine'});
-  });
-  /* time stops; the man in the suit */
-  T(14000,()=>{
-    ui.flash.style.transition='opacity .25s'; ui.flash.style.opacity=.9;
-    sfx.flicker(); sfxTone({f0:40,f1:160,dur:2,vol:.25,type:'sine'});
-    rumbleT=0;
-    gmanNPC.visible=true;
-    gmanNPC.position.set(1.6,0,-1001.5);
-    gmanNPC.rotation.y=Math.atan2(player.pos.x-1.6,player.pos.z+1001.5);
-    setTimeout(()=>{ui.flash.style.transition='opacity 2.5s';ui.flash.style.opacity=0;},400);
-  });
-  T(15500,()=>say([[G,'That’s… far enough, Doctor Freeman.',4.5]]));
-  T(20500,()=>say([[G,'The ship, and its… disagreement with time, are no longer your concern.',6]]));
-  T(27000,()=>say([[G,'Rest assured, your friends will remember you as a hero. And the young lady — well. She has new employers now.',7.5]]));
-  T(35000,()=>{ /* he collects Alyx */
-    sfx.flicker();
-    ui.flash.style.transition='opacity .2s'; ui.flash.style.opacity=.7;
-    setTimeout(()=>{
-      ui.flash.style.transition='opacity 1.8s'; ui.flash.style.opacity=0;
-      alyxNPC.mesh.visible=false; gmanNPC.visible=false;
-    },250);
-  });
-  T(36500,()=>say([[G,'As for you… ah. Hm. It appears, Doctor Freeman, that you have been… outbid.',7]]));
-  /* the vortigaunts claim him */
-  T(44000,()=>{
-    sfxTone({f0:80,f1:520,dur:1.4,vol:.3,type:'sawtooth'});
-    const cx=camera.position.x,cz=camera.position.z;
-    const vortLight=new THREE.PointLight(0x44ff88,90,30);
-    vortLight.position.set(cx,3,cz); scene.add(vortLight);
-    for(let i=0;i<vorts.length;i++){
-      const a=i*(Math.PI*2/vorts.length)+.6;
-      vorts[i].visible=true;
-      vorts[i].position.set(cx+Math.cos(a)*2.8,0,cz+Math.sin(a)*2.8);
-      vorts[i].lookAt(cx,1,cz);
-    }
-    spawnPuffs(tmpB.set(cx,1.2,cz),14,0x66ff99,5,.8);
-  });
-  T(45500,()=>say([[VO,'We claim the Freeman. The one in blue shall not collect what is not owed.',6.5],
-                   [VO,'Hold fast. The vessel keeps its appointment — and you, yours. Far from here. Far from now.',7]]));
-  T(53500,()=>{
-    ui.flash.style.transition='opacity 3.5s'; ui.flash.style.opacity=1;
-    sfxTone({f0:50,f1:1200,dur:3.4,vol:.3,type:'sine'});
-  });
-  T(57500,()=>{
-    ui.fade.style.opacity=1;
-    setTimeout(()=>{ui.flash.style.transition='opacity .1s';ui.flash.style.opacity=0;},900);
-  });
-  T(59500,()=>{
-    const t=(performance.now()-stats.start)/1000;
-    ui.endStats.innerHTML=
-      `SOLDIERS DOWN&nbsp; <b>${stats.soldiers}</b> &nbsp;&nbsp; MANHACKS SCRAPPED&nbsp; <b>${stats.hacks}</b><br>`+
-      `MOSSMAN RESCUED&nbsp; <b>ONCE</b> &nbsp;&nbsp; MOSSMAN LOST&nbsp; <b>ONCE</b><br>`+
-      `TIME ON THE ICE&nbsp; <b>${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}</b>`;
-    ui.end.classList.remove('hidden');
-    ui.fade.style.opacity=0;
-    endDone=true;
-  });
+  runSeq([
+    {wait:1.2},
+    [[A,'Course locked. Straight into the heart of their empire.',5.5]],
+    ()=>{
+      nexus.visible=true; nexus.userData.halo.intensity=140;
+      scene.fog.far=2000; rumbleT=1;
+      sfxTone({f0:30,f1:90,dur:3,vol:.3,type:'sine'});
+    },
+    {wait:2.5},
+    [[A,'Whatever this ship can really do… let them have all of it at once.',5.5]],
+    {wait:7}, // ride the rumble; let the nexus fill the viewport
+    ()=>{ /* time stops; the man in the suit */
+      ui.flash.style.transition='opacity .25s'; ui.flash.style.opacity=.9;
+      sfx.flicker(); sfxTone({f0:40,f1:160,dur:2,vol:.25,type:'sine'});
+      rumbleT=0;
+      gmanNPC.visible=true;
+      gmanNPC.position.set(1.6,0,-1149.5);
+      gmanNPC.rotation.y=Math.atan2(camera.position.x-1.6,camera.position.z+1149.5);
+      setTimeout(()=>{ui.flash.style.transition='opacity 2.5s';ui.flash.style.opacity=0;},400);
+    },
+    {wait:2},
+    [[G,'That’s… far enough, Doctor Freeman.',4.5]],
+    {wait:1.4},
+    [[G,'The ship, and its… disagreement with time, are no longer your concern.',6]],
+    {wait:1.4},
+    [[G,'Rest assured, your friends will remember you as a hero. And the young lady — well. She has new employers now.',7.5]],
+    {wait:1.6},
+    ()=>{ /* he collects Alyx */
+      sfx.flicker();
+      ui.flash.style.transition='opacity .2s'; ui.flash.style.opacity=.7;
+      setTimeout(()=>{
+        ui.flash.style.transition='opacity 1.8s'; ui.flash.style.opacity=0;
+        alyxNPC.mesh.visible=false; gmanNPC.visible=false;
+      },250);
+    },
+    {wait:2},
+    [[G,'As for you… ah. Hm. It appears, Doctor Freeman, that you have been… outbid.',7]],
+    {wait:1.6},
+    ()=>{ /* the vortigaunts claim him */
+      sfxTone({f0:80,f1:520,dur:1.4,vol:.3,type:'sawtooth'});
+      const cx=camera.position.x,cz=camera.position.z;
+      const vortLight=new THREE.PointLight(0x44ff88,90,30);
+      vortLight.position.set(cx,3,cz); scene.add(vortLight);
+      for(let i=0;i<vorts.length;i++){
+        const a=i*(Math.PI*2/vorts.length)+.6;
+        vorts[i].visible=true;
+        vorts[i].position.set(cx+Math.cos(a)*2.8,0,cz+Math.sin(a)*2.8);
+        vorts[i].lookAt(cx,1,cz);
+      }
+      spawnPuffs(tmpB.set(cx,1.2,cz),14,0x66ff99,5,.8);
+    },
+    {wait:1.5},
+    [[VO,'We claim the Freeman. The one in blue shall not collect what is not owed.',6.5]],
+    {wait:.8},
+    [[VO,'Hold fast. The vessel keeps its appointment — and you, yours. Far from here. Far from now.',7]],
+    {wait:1},
+    ()=>{
+      ui.flash.style.transition='opacity 3.5s'; ui.flash.style.opacity=1;
+      sfxTone({f0:50,f1:1200,dur:3.4,vol:.3,type:'sine'});
+    },
+    {wait:4},
+    ()=>{
+      ui.fade.style.opacity=1;
+      setTimeout(()=>{ui.flash.style.transition='opacity .1s';ui.flash.style.opacity=0;},900);
+    },
+    {wait:2},
+    ()=>{
+      const t=(performance.now()-stats.start)/1000;
+      ui.endStats.innerHTML=
+        `SOLDIERS DOWN&nbsp; <b>${stats.soldiers}</b> &nbsp;&nbsp; MANHACKS SCRAPPED&nbsp; <b>${stats.hacks}</b><br>`+
+        `MOSSMAN RESCUED&nbsp; <b>ONCE</b> &nbsp;&nbsp; MOSSMAN LOST&nbsp; <b>ONCE</b><br>`+
+        `TIME ON THE ICE&nbsp; <b>${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}</b>`;
+      ui.end.classList.remove('hidden');
+      ui.fade.style.opacity=0;
+      endDone=true;
+    },
+  ]);
 }
 
 /* ============================= AI updates ============================= */
@@ -1929,7 +1999,7 @@ function updatePlayer(dt){
   collideXZ(player.pos,PRADIUS,1.8);
   const cor=corridorAt(player.pos.z);
   player.pos.x=clamp(player.pos.x,cor.c-cor.w,cor.c+cor.w);
-  if(prog.boarded) player.pos.z=clamp(player.pos.z,-1007.5,-692);
+  if(prog.boarded) player.pos.z=clamp(player.pos.z,-1154,-692);
   else player.pos.z=clamp(player.pos.z,-648,28);
   // camera
   const moving=Math.hypot(player.vel.x,player.vel.z);
@@ -1984,12 +2054,12 @@ function updatePlayer(dt){
     if(!b.done&&player.pos.z<b.z){
       b.done=true;
       if(b.fn)b.fn();
-      say(b.lines);
+      if(b.lines.length) pendingLines.push(b.lines); // spoken once the channel is quiet
       if(b.cp) saveCheckpoint();
     }
   }
   if(!prog.boarded&&player.pos.z<-632) boardShip();
-  if(prog.boarded&&prog.argued&&player.pos.z<-997) startEnding();
+  if(prog.boarded&&prog.argued&&player.pos.z<-1145) startEnding();
   // pickups
   for(const pk of pickups){
     if(pk.dead) continue;
@@ -2071,6 +2141,15 @@ function updateFX(dt,t){
   }
   if(chamberField.material.opacity>0)
     chamberField.material.opacity=.12+Math.abs(Math.sin(t*4.2))*.12;
+  /* the hull settles and complains around you */
+  if(prog.boarded&&state==='play'&&AC){
+    groanT-=dt;
+    if(groanT<=0){
+      groanT=rand(8,18);
+      sfxTone({f0:rand(34,60),f1:rand(20,30),dur:rand(1.4,2.6),vol:.07,type:'sine'});
+      if(Math.random()<.4) setTimeout(()=>sfxNoise({dur:.3,vol:.05,freq:900,slide:-550}),rand(300,900));
+    }
+  }
   // sun shadows follow player
   sun.position.set(camera.position.x+60,46,camera.position.z+80);
   sun.target.position.set(camera.position.x,0,camera.position.z);
@@ -2101,16 +2180,17 @@ function frame(){
   if(state==='end'){
     // drift to a stand beside the helm while it plays out
     const sh=rumbleT>0?.08:0;
-    camera.position.lerp(tmpA.set(0,2.0,-998.5),dt*.5);
+    camera.position.lerp(tmpA.set(0,2.0,-1146.5),dt*.5);
     camera.position.x+=rand(-sh,sh); camera.position.y+=rand(-sh,sh)*.6;
     camera.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(.1,0,0,'YXZ')),dt*.6);
     for(const c of companions) npcUpdate(c,dt);
   }
   if(nexus.visible){
     for(const r of nexus.children) if(r.userData.spin) r.rotation.z+=dt*r.userData.spin;
-    if(nexus.position.z<-1120) nexus.position.z+=dt*9; // the plunge
+    if(nexus.position.z<-1270) nexus.position.z+=dt*9; // the plunge
     nexus.children[0].scale.setScalar(1+Math.sin(t*2.2)*.04);
   }
+  updateSeqs(dt);
   updateSubs(dt);
   updateFX(dt,t);
   renderer.render(scene,camera);
