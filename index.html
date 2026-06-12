@@ -581,6 +581,17 @@ const field=new THREE.Mesh(new THREE.PlaneGeometry(30,5.5,24,4),
 field.position.set(2,2.75,-428); scene.add(field);
 const fieldCol=addBoxCollider(2,2.75,-428,15,2.75,.4);
 const fieldHum=new THREE.PointLight(0x66ccff,8,16); fieldHum.position.set(2,3,-427); scene.add(fieldHum);
+/* power conduit: makes the cell -> field dependency readable at a glance */
+const conduitMat=new THREE.MeshStandardMaterial({color:0x16242c,emissive:0x55ddff,emissiveIntensity:1.6});
+{
+  const ax=10.2,az=-410.5,bx=2,bz=-427.6;
+  const len=Math.hypot(bx-ax,bz-az);
+  const c=new THREE.Mesh(new THREE.BoxGeometry(.26,.1,len),conduitMat);
+  c.position.set((ax+bx)/2,.06,(az+bz)/2);
+  c.rotation.y=Math.atan2(bx-ax,bz-az);
+  scene.add(c);
+}
+const podLight=new THREE.PointLight(0xff4422,6,13); podLight.position.set(13,3.2,-413.5); scene.add(podLight);
 
 /* ============================= NPCs ============================= */
 function makeNPC({jacket,trim,skin,hair}){
@@ -1404,9 +1415,13 @@ function updateSubs(dt){
     return;
   }
   subIdleT+=dt;
-  /* release the next held beat only after a breath of silence */
+  /* release the next held beat only after a breath of silence.
+     Flavor lines expire if the player has long passed the spot;
+     sticky lines (exposition, navigation) always play eventually. */
   if(state==='play'&&pendingLines.length&&subIdleT>1.1){
-    say(pendingLines.shift()); subIdleT=0;
+    const p=pendingLines.shift();
+    const stale=!p.sticky&&p.z!==undefined&&player.pos.z<p.z-55;
+    if(!stale&&!(p.skip&&p.skip())){say(p.lines); subIdleT=0;}
   }
 }
 function clearDialogue(){subQueue.length=0; pendingLines.length=0; subT=0; subIdleT=99; ui.subs.style.opacity=0;}
@@ -1471,31 +1486,54 @@ function setInterior(on){
   }
 }
 
-/* ---------- the rescue: power cell destroyed ---------- */
+/* ---------- the rescue: power cell destroyed ----------
+   This is the act's payoff, so it PREEMPTS ambient chatter and the
+   cause -> effect chain lands inside two seconds of the cell breaking. */
 function onCellBroken(){
   if(prog.rescued) return;
   prog.rescued=true;
+  saveCheckpoint(); // the cell can't be re-broken; never strand a death behind the field
+  /* unmissable feedback: field surges out, conduit dies, pod goes green */
+  toast('DETENTION FIELD DOWN');
+  setObjective('');
   field.visible=false; fieldCol.active=false; fieldHum.intensity=0;
+  conduitMat.emissiveIntensity=0;
   podGroup.userData.lamp.material.emissive.setHex(0x44ff66);
-  sfx.flicker();
-  /* pod door slides up, Mossman steps out and walks ahead */
+  podLight.color.setHex(0x44ff66);
+  for(let i=0;i<6;i++) spawnPuffs(tmpB.set(2+rand(-11,11),rand(.6,4.4),-428),2,0x77ddff,4,.55);
+  sfx.flicker(); sfxTone({f0:850,f1:50,dur:.9,vol:.25,type:'sawtooth'});
+  /* pod door slides up, Mossman steps out to meet you */
   const slide=setInterval(()=>{
     podDoor.position.y+=.07;
     if(podDoor.position.y>4){clearInterval(slide);podDoor.visible=false;}
   },30);
   mossNPC.active=true;
-  mossNPC.target.set(8,0,-420);
-  pendingLines.push([[M,'Gordon? Gordon Freeman. Of all the rescue parties I imagined…',5],
-       [M,'They pulled me off the dig crew when I stopped cooperating. The ship is real, Gordon. The drive is still aboard.',6.5],
-       [A,'Mossman. Gordon, watch her — after White Forest I don’t trust a word out of that pod.',5.5],
-       [M,'Charming as ever. There’s a breach in the ice near the bow. I can get us through the hull — follow me down.',6],
-       [A,'Fine. We do this together. But I’m keeping my eyes open.',4.5]]);
-  setObjective('REACH THE BREACH IN THE ICE');
-  setTimeout(()=>{ // she goes ahead to the breach with Alyx
-    mossNPC.target.set(0,0,-470);
-    setTimeout(()=>{mossNPC.mesh.visible=false;mossNPC.active=false;toast('MOSSMAN MOVES AHEAD');},6000);
-  },14000);
-  saveCheckpoint();
+  mossNPC.target.set(10.5,0,-415.5);
+  clearDialogue(); // payoff preempts; held flavor lines die here
+  runSeq([
+    {wait:1.8},
+    [[M,'Gordon? Gordon Freeman. Of all the rescue parties I imagined…',5]],
+    {wait:.6},
+    [[M,'They pulled me off the dig crew when I stopped cooperating. The ship is real, Gordon. The drive is still aboard.',6.5]],
+    {wait:.8},
+    [[A,'Mossman. Gordon, watch her — after White Forest I don’t trust a word out of that pod.',5.5]],
+    {wait:.8},
+    [[M,'Charming as ever. There’s a breach in the ice near the bow. I can get us through the hull — follow me down.',6]],
+    {wait:.6},
+    [[A,'Fine. We do this together. But I’m keeping my eyes open.',4.5]],
+    {wait:.5},
+    ()=>{
+      if(prog.boarded) return; // sprinter already aboard; the ship took over
+      setObjective('REACH THE BREACH IN THE ICE');
+      mossNPC.target.set(0,0,-470); // she heads for the breach ahead of you
+    },
+    {wait:8},
+    ()=>{
+      if(prog.boarded) return;
+      mossNPC.mesh.visible=false; mossNPC.active=false;
+      toast('MOSSMAN MOVES AHEAD');
+    },
+  ]);
 }
 
 /* ---------- boarding the Borealis ---------- */
@@ -1510,7 +1548,7 @@ function boardShip(){
     placeCompanions(-700);
     ui.flash.style.transition='opacity 2.2s'; ui.flash.style.opacity=0;
     frozen=false;
-    showChapter('CHAPTER FOUR','BELOW DECKS');
+    showChapter('CHAPTER THREE','BELOW DECKS');
     setObjective('MOVE DEEPER INTO THE SHIP');
     clearDialogue(); // hard cut: whatever was left on the radio stays on the ice
     runSeq([
@@ -1563,7 +1601,7 @@ function startArgument(){
   prog.argued=true;
   saveCheckpoint();
   chamberCol.active=true; chamberField.material.opacity=.18;
-  showChapter('CHAPTER SIX','THE ARGUMENT');
+  showChapter('CHAPTER FOUR','THE ARGUMENT');
   setObjective('');
   /* the two of them take the console */
   alyxNPC.hold=mossNPC.hold=true;
@@ -1601,32 +1639,33 @@ function startArgument(){
 }
 
 const beats=[
-  {z:-8,lines:[[A,'Gordon! You’re moving — good. The gunship clipped us hard; I came down on the ridge east of you.',5],
-               [A,'Mossman’s coordinates end about a kilometer north. Follow the ice. The Borealis is close — I can feel it.',5.5]]},
+  {z:-8,sticky:true,
+    lines:[[A,'Gordon! You’re moving — good. The gunship clipped us hard; I came down on the ridge east of you.',5],
+           [A,'Mossman’s coordinates end about a kilometer north. Follow the ice. The Borealis is close — I can feel it.',5.5]]},
   {z:-70,lines:[[A,'Heads up. I’m picking up Combine chatter all over this valley. They beat us here.',4.5]]},
-  {z:-148,fn(){showChapter('CHAPTER TWO','ACROSS THE ICE');},
-    lines:[[A,'Clear behind you? Good. The valley opens up ahead — keep moving while we still have light.',5.5]]},
+  {z:-148,lines:[[A,'Clear behind you? Good. The valley opens up ahead — keep moving while we still have light.',5.5]]},
   {z:-200,lines:[[A,'Manhacks! Out here? They really don’t want anyone reaching that ship.',4.5]]},
-  {z:-288,cp:true,fn(){revealT=0;ghost.visible=true;sfx.flicker();},
+  {z:-288,cp:true,sticky:true,fn(){revealT=0;ghost.visible=true;sfx.flicker();},
     lines:[[A,'Oh my god. Gordon… there it is. The Borealis.',4.5],
            [A,'It’s not all the way here. It keeps slipping — like the ship can’t decide *when* it wants to be.',6]]},
-  {z:-330,cp:true,fn(){showChapter('CHAPTER THREE','THE OUTPOST');setObjective('BREAK THROUGH THE OUTPOST');},
+  {z:-330,cp:true,sticky:true,fn(){showChapter('CHAPTER TWO','THE OUTPOST');setObjective('BREAK THROUGH THE OUTPOST');},
     lines:[[A,'That outpost is the only thing between you and the hull. Mossman said the drive is still aboard — we can’t let them dig it out.',6],
            [A,'Wait. Gordon, there’s a detention pod at the back of that outpost — and a live human reading inside it.',5.5]]},
-  {z:-398,fn(){if(!prog.rescued)setObjective('DESTROY THE POD’S POWER CELL');},
-    lines:[[A,'That barrier across the pass runs off the pod’s power cell — the glowing cylinder. Smash it and we get the prisoner *and* the road.',6.5]]},
-  {z:-480,cp:true,lines:[[A,'Almost there! The breach Mossman promised — near the bow, glowing blue. We’re at the light, waiting for you!',5.5]]},
-  {z:-580,lines:[[A,'Whatever happens aboard that ship… I’m glad it’s you out here with me, Gordon.',5]]},
+  {z:-398,sticky:true,skip:()=>prog.rescued,fn(){if(!prog.rescued)setObjective('DESTROY THE POD’S POWER CELL');},
+    lines:[[A,'That barrier across the pass runs off the pod’s power cell — follow the glowing conduit. Smash the cell and we get the prisoner *and* the road.',6.5]]},
+  {z:-480,cp:true,sticky:true,
+    lines:[[A,'Almost there! The breach Mossman promised — near the bow, glowing blue. We’re at the light, waiting for you!',5.5]]},
+  {z:-580,sticky:true,lines:[[A,'Whatever happens aboard that ship… I’m glad it’s you out here with me, Gordon.',5]]},
   /* -------- aboard the Borealis -------- */
-  {z:-790,fn(){phaseFlash('aperture');placeCompanions(-812);},
+  {z:-790,sticky:true,fn(){phaseFlash('aperture');placeCompanions(-812);},
     lines:[[M,'Did you feel that? That was the dry dock. Aperture Science — the day they vanished the whole ship from the harbor.',6.5],
            [A,'I just saw welders. People, working, right through us. Are they the ghosts here… or are we?',6]]},
-  {z:-880,cp:true,fn(){showChapter('CHAPTER FIVE','ADRIFT IN TIME');placeCompanions(-935);},
+  {z:-880,cp:true,fn(){placeCompanions(-935);},
     lines:[[A,'More of them ahead — the Combine want the engine room. Don’t let them dig in.',5]]},
-  {z:-955,cp:true,fn(){phaseFlash('war');placeCompanions(-1030);setObjective('REACH THE REACTOR CHAMBER');},
+  {z:-955,cp:true,sticky:true,fn(){phaseFlash('war');placeCompanions(-1030);setObjective('REACH THE REACTOR CHAMBER');},
     lines:[[M,'The reactor is cycling faster. The ship isn’t just slipping through time anymore — it’s choosing destinations.',6.5],
            [A,'I saw the sky on fire, Gordon. Seven hours, start to finish. We cannot let them keep this thing.',6]]},
-  {z:-1040,cp:true,fn(){placeCompanions(-1062);},
+  {z:-1040,cp:true,sticky:true,fn(){placeCompanions(-1062);},
     lines:[[A,'Mossman’s been three steps ahead of us since the pod. Whatever she’s setting up at that console… stay close to me, Gordon.',6.5]]},
   {z:-1058,fn(){startArgument();},lines:[]},
 ];
@@ -1646,6 +1685,7 @@ function saveCheckpoint(){
 function applyProgress(){
   if(prog.rescued){
     field.visible=false; fieldCol.active=false; fieldHum.intensity=0;
+    conduitMat.emissiveIntensity=0; podLight.color.setHex(0x44ff66);
     podDoor.visible=false; podGroup.userData.lamp.material.emissive.setHex(0x44ff66);
     if(!prog.boarded){mossNPC.mesh.visible=false;mossNPC.active=false;}
   }
@@ -1689,7 +1729,7 @@ function startEnding(){
   document.exitPointerLock();
   ui.pause.classList.add('hidden');
   vm.visible=false; ui.cross.classList.add('hidden');
-  showChapter('CHAPTER SEVEN','INFINITE FINALITY');
+  showChapter('CHAPTER FIVE','INFINITE FINALITY');
   setObjective('');
   /* Alyx takes the helm; collision course */
   alyxNPC.active=false; alyxNPC.mesh.visible=true;
@@ -2054,7 +2094,7 @@ function updatePlayer(dt){
     if(!b.done&&player.pos.z<b.z){
       b.done=true;
       if(b.fn)b.fn();
-      if(b.lines.length) pendingLines.push(b.lines); // spoken once the channel is quiet
+      if(b.lines.length) pendingLines.push({lines:b.lines,z:b.z,sticky:b.sticky,skip:b.skip}); // spoken once the channel is quiet
       if(b.cp) saveCheckpoint();
     }
   }
